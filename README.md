@@ -9,17 +9,17 @@ Mouser](https://eu.mouser.com/ProductDetail/STMicroelectronics/NUCLEO-F429ZI?qs=
 But basic principles would be applicable to any other microcontroller. To
 proceed, please install the following tools:
 
-- ARM GCC, https://launchpad.net/gcc-arm-embedded
-- GNU make, http://www.gnu.org/software/make/
-- ST link, https://github.com/stlink-org/stlink
+- ARM GCC, https://launchpad.net/gcc-arm-embedded - for compiling and linking
+- GNU make, http://www.gnu.org/software/make/ - for build automation
+- ST link, https://github.com/stlink-org/stlink - for flashing
 
 Also, download two datasheets:
 - [STM32F429 MCU datasheet](https://www.st.com/resource/en/reference_manual/dm00031020-stm32f405-415-stm32f407-417-stm32f427-437-and-stm32f429-439-advanced-arm-based-32-bit-mcus-stmicroelectronics.pdf)
 - [Nucleo-F429ZI board datasheet](https://www.st.com/resource/en/user_manual/dm00244518-stm32-nucleo144-boards-mb1137-stmicroelectronics.pdf)
 
 In the following sections I'll show how to program using just a compiler and a
-datasheet, nothing else. In the last section I'll explain how to use vendor's
-CMSIS headers, and why they should be used.
+datasheet, nothing else. Later I'll explain what are the vendor's
+CMSIS headers, how and why they should be used.
 
 ## Introduction
 
@@ -62,12 +62,23 @@ words, by writing a 32-bit value at a certain memory address, we can control
 how given peripheral should behave. By reading registers, we can read back
 peripheral's data or configuration.
 
-For example, a GPIO (General Purpose Input Output) peripheral allows to
-manipulate MCU pins by writing and reading to GPIO registers.  The GPIOA
+There are many different peripherals. One of the simpler ones are GPIO
+(General Purpose Input Output), which allow user to set MCU pins
+into "output mode" and set high or low voltage on them. Or, set pins into
+an "input mode" and read voltage values from them. There is a UART peripheral
+which can transmit and receive serial data over two pins using RS232 protocol.
+There are many other peripherals.
+
+Often, there are multiple "instances" of the same peripheral, for example
+GPIOA, GPIOB, ... which control different set of MCU pins. Likewise, there
+could be UART1, UART2, ... which allow to implement multiple UART channels.
+On Nucleo-F429, there are several GPIO and UART peripherals.
+
+For example, GPIOA
 peripheral starts at 0x40020000, and we can find GPIO register description in
-section 8.4. The datasheet says that `GPIOA_MODER` register has offset 0,
-that means that it's address is `0x40020000 + 0`, and this is the format of
-the register:
+section 8.4. The datasheet says that `GPIOA_MODER` register has offset 0, that
+means that it's address is `0x40020000 + 0`, and this is the format of the
+register:
 
 <img src="images/moder.png" style="max-width: 100%" />
 
@@ -96,8 +107,8 @@ mode. For example, this snippet sets pin A3 to output mode:
 
 Some registers are not mapped to the MCU peripherals, but they are mapped to
 the ARM CPU configuration and control. For example, there is a "Reset at clock
-control" unit, described in section 6 of the datasheet. It describes registers
-that allow to set systems clock and other things.
+control" unit (RCC), described in section 6 of the datasheet. It describes
+registers that allow to set systems clock and other things.
 
 ## Human-readable peripherals programming
 
@@ -396,6 +407,10 @@ __attribute__((naked, noreturn)) void _reset(void) {
   for (;;) (void) 0;  // Infinite loop in the case if main() returns
 }
 ```
+
+The following diagram visualises how `_reset()` initialises .data and .bss:
+
+![](images/mem2.svg)
 
 Now we are ready to produce a full firmware file `firmware.elf`:
 
@@ -774,7 +789,7 @@ main loop (also called superloop) non-blocking. That means that inside that
 loop we can perform many actions - for example, have different timers with
 different periods, and they all will be triggered in time.
 
-A complete project source code you can find in [step-2-blinky-systick](step-2-blinky-systick) folder.
+A complete project source code you can find in [step-2-systick](step-2-systick) folder.
 
 ## Add UART debug output
 
@@ -953,17 +968,16 @@ For example:
 Thus, by modifying a `_write()` syscall, we can redirect
 printf() to whatever we want. That mechanism is called "IO retargeting".
 
-Note that STM32 Cube uses ARM GCC with newlib, that's why Cube projects
-typically include that syscalls.c - that's because of newlib C library.
-
-Other toolchains, like TI's CCS, Keil's CC, might use a different  C library
-with a bit different retargeting mechanism. But in our case, this is newlib,
-so let's modify the `_write()` syscall to print to UART3.
+Note: STM32 Cube also uses ARM GCC with newlib, that's why Cube projects
+typically include `syscalls.c` file.  Other toolchains, like TI's CCS, Keil's
+CC, might use a different  C library with a bit different retargeting
+mechanism. We use newlib, so let's modify `_write()` syscall to print to the
+UART3.
 
 Before that, let's organise our source code in the following way:
 - move all API definitions to the file `mcu.h`
-- startup code we move to startup.c
-- for syscalls, create a separate file `syscalls.c` - empty at first
+- move startup code to `startup.c`
+- create an empty file `syscalls.c` for newlib "syscalls"
 - modify Makefile to addd `syscalls.c` and `startup.c` to the build
 
 After moving all API definitions to the `mcu.h`, our `main.c` file becomes
@@ -1265,3 +1279,210 @@ to let GCC know about it:
 We have left with
 a project template that can be reused for the future projects.
 A complete project source code you can find in [step-5-cmsis](step-5-cmsis)
+
+
+## Setting up clocks
+
+After boot, Nucleo-F429ZI CPU runs at 16MHz. The maximum frequency is 180MHz.
+Note that system clock frequency is not the only factor we need to care about.
+Peripherals are attached to different buses, APB1 and APB2 which are clocked
+differently.  Their clock speeds are configured by the frequency prescaler
+values, set in the RCC. The main CPU clock source can also be
+different - we can use either an external crystal oscillator (HSE) or an
+internal oscillator (HSI). In our case, we'll use HSI.
+
+When CPU executes instructions from flash, a flash read speed (which is around
+25MHz) becomes a bottleneck if CPU clock gets higher. There are several tricks
+that can help. Instruction prefetch is one. Also, we can give a clue to the
+flash controller, how faster the system clock is: that value is called flash
+latency. For 180MHz system clock, the `FLASH_LATENCY` value is 5. Bits 8 and 9
+in the flash controller enable instruction and data caches:
+
+```c
+  FLASH->ACR |= FLASH_LATENCY | BIT(8) | BIT(9);      // Flash latency, caches
+```
+
+The clock source (HSI or HSE) goes through a piece of hardware called
+PLL, which multiplies source frequency by a certain value. Then, a set of
+frequency dividers are used to set the system clock and APB1, APB2 clocks.
+In order to obtain the maximum system clock of 180MHz, multiple values
+of PLL dividers and APB prescalers are possible. Section 6.3.3 of the
+datasheet tells us the maximum values for APB1 clock: <= 45MHz,
+and the APB2 clock: <= 90MHz. That narrows down the list of possible
+combinations. Here we chose the values manually. Note that tools like
+CubeMX can automate the process and make it easy and visual.
+
+```c
+enum { APB1_PRE = 5 /* AHB clock / 4 */, APB2_PRE = 4 /* AHB clock / 2 */ };
+enum { PLL_HSI = 16, PLL_M = 8, PLL_N = 180, PLL_P = 2 };  // Run at 180 Mhz
+#define PLL_FREQ (PLL_HSI * PLL_N / PLL_M / PLL_P)
+#define FREQ (PLL_FREQ * 1000000)
+```
+
+Now we're ready for a simple algorithm to set up the clock for CPU and peripheral buses
+may look like this:
+
+- Optionally, enable FPU
+- Set flash latency
+- Decide on a clock source, and PLL, APB1 and APB2 prescalers
+- Configure RCC by setting respective values:
+
+```c
+static inline void clock_init(void) {                 // Set clock frequency
+  SCB->CPACR |= ((3UL << 10 * 2) | (3UL << 11 * 2));  // Enable FPU
+  FLASH->ACR |= FLASH_LATENCY | BIT(8) | BIT(9);      // Flash latency, caches
+  RCC->PLLCFGR &= ~((BIT(17) - 1));                   // Clear PLL multipliers
+  RCC->PLLCFGR |= (((PLL_P - 2) / 2) & 3) << 16;      // Set PLL_P
+  RCC->PLLCFGR |= PLL_M | (PLL_N << 6);               // Set PLL_M and PLL_N
+  RCC->CR |= BIT(24);                                 // Enable PLL
+  while ((RCC->CR & BIT(25)) == 0) spin(1);           // Wait until done
+  RCC->CFGR = (APB1_PRE << 10) | (APB2_PRE << 13);    // Set prescalers
+  RCC->CFGR |= 2;                                     // Set clock source to PLL
+  while ((RCC->CFGR & 12) == 0) spin(1);              // Wait until done
+}
+```
+
+What is left, is to call `clock_init()` from main, then rebuild and reflash.
+And our board runs at its maximum speed, 180MHz!
+A complete project source code you can find in [step-6-clock](step-6-clock)
+
+## Web server with device dashboard
+
+The Nucleo-F429ZI comes with Ethernet on-board. Ethernet hardware needs
+two components: a PHY (which transmits/receives electrical signals to the
+media like copper, optical cable, etc) and MAC (which drives PHY controller).
+On our Nucleo, the MAC controller is built-in, and the PHY is external
+(specifically, is is Microchip's LAN8720a).
+
+MAC and PHY can talk several interfaces, we'll use RMII. For that, a bunch
+of pins must be configured to use their Alternative Function (AF).
+To implement a web server, we need 3 software components:
+- a network driver, which sends/receives Ethernet frames to/from MAC controller
+- a network stack, that parses frames and understands TCP/IP
+- a network library that understands HTTP
+
+We will use [Mongoose Network Library](https://github.com/cesanta/mongoose)
+which implements all of that in a single file. It is a dual-licensed library
+(GPLv2/commercial) that was designed to make network embedded development
+fast and easy.
+
+So, copy
+[mongoose.c](https://raw.githubusercontent.com/cesanta/mongoose/master/mongoose.c)
+and
+[mongoose.h](https://raw.githubusercontent.com/cesanta/mongoose/master/mongoose.h)
+to our project. Now we have a driver, a network stack, and a library at hand.
+Mongoose also provides a large set of examples, and one of them is a
+[device dashboard example](https://github.com/cesanta/mongoose/tree/master/examples/device-dashboard).
+It implements lots of things - like dashboard login, real-time data exchange
+over WebSocket, embedded file system, MQTT communication, etcetera.  So let's
+use that example. Copy two extra files:
+- [net.c](https://raw.githubusercontent.com/cesanta/mongoose/master/examples/device-dashboard/net.c) - implements dashboard functionality
+- [packed_fs.c](https://raw.githubusercontent.com/cesanta/mongoose/master/examples/device-dashboard/packed_fs.c) - contains HTML/CSS/JS GUI files
+
+What we need is to tell Mongoose which functionality to enable. That can
+be done via compilation flags, by setting preprocessor constants. Alternatively,
+the same constants can be set in the `mongoose_custom.h` file. Let's go
+the second way. Create `mongoose_custom.h` file with the following contents:
+
+```c
+#pragma once
+#define MG_ARCH MG_ARCH_NEWLIB
+#define MG_ENABLE_MIP 1
+#define MG_ENABLE_PACKED_FS 1
+#define MG_IO_SIZE 512
+#define MG_ENABLE_CUSTOM_MILLIS 1
+```
+
+Now it's time to add some networking code to main.c. We `#include "mongoose.c"`,
+initialise Ethernet RMII pins and enable Ethernet in the RCC:
+
+```c
+  uint16_t pins[] = {PIN('A', 1),  PIN('A', 2),  PIN('A', 7),
+                     PIN('B', 13), PIN('C', 1),  PIN('C', 4),
+                     PIN('C', 5),  PIN('G', 11), PIN('G', 13)};
+  for (size_t i = 0; i < sizeof(pins) / sizeof(pins[0]); i++) {
+    gpio_init(pins[i], GPIO_MODE_AF, GPIO_OTYPE_PUSH_PULL, GPIO_SPEED_INSANE,
+              GPIO_PULL_NONE, 11);
+  }
+  nvic_enable_irq(61);                          // Setup Ethernet IRQ handler
+  RCC->APB2ENR |= BIT(14);                      // Enable SYSCFG
+  SYSCFG->PMC |= BIT(23);                       // Use RMII. Goes first!
+  RCC->AHB1ENR |= BIT(25) | BIT(26) | BIT(27);  // Enable Ethernet clocks
+  RCC->AHB1RSTR |= BIT(25);                     // ETHMAC force reset
+  RCC->AHB1RSTR &= ~BIT(25);                    // ETHMAC release reset
+```
+
+Mongoose's driver uses Ethernet interrupt, thus we need to update `startup.c`
+and add `ETH_IRQHandler` to the vector table. Let's reorganise vector table
+definition in `startup.c` in a way that does not require any modification
+to add an interrupt handler function. The idea is to use a "weak symbol"
+concept:
+
+```c
+void __attribute__((weak)) DefaultIRQHandler(void) {
+  for (;;) (void) 0;
+}
+#define WEAK_ALIAS __attribute__((weak, alias("DefaultIRQHandler")))
+
+WEAK_ALIAS void NMI_Handler(void);
+WEAK_ALIAS void HardFault_Handler(void);
+WEAK_ALIAS void MemManage_Handler(void);
+...
+__attribute__((section(".vectors"))) void (*tab[16 + 91])(void) = {
+    0, _reset, NMI_Handler, HardFault_Handler, MemManage_Handler,
+    ...
+```
+
+Notice that the vector table now has entries for every possible IRQ handler,
+but all of them are "aliased" to the function `DefaultIRQHandler()` which is
+marked weak. That means that if developer creates an IRQ handler somewhere in
+the code, for example, `ETH_IRQHandler()`, then the linker will not report
+symbol conflict - but instead, it'll use developer's `ETH_IRQHandler()` instead
+of the weak `DefaultIRQHandler()`.
+
+The next step is to initialise Mongoose library: create an event manager,
+setup network driver, and start a listening HTTP connection:
+
+```c
+  struct mg_mgr mgr;        // Initialise Mongoose event manager
+  mg_mgr_init(&mgr);        // and attach it to the MIP interface
+  mg_log_set(MG_LL_DEBUG);  // Set log level
+
+  struct mip_driver_stm32 driver_data = {.mdc_cr = 4};  // See driver_stm32.h
+  struct mip_if mif = {
+      .mac = {2, 0, 1, 2, 3, 5},
+      .use_dhcp = true,
+      .driver = &mip_driver_stm32,
+      .driver_data = &driver_data,
+  };
+  mip_init(&mgr, &mif);
+  extern void device_dashboard_fn(struct mg_connection *, int, void *, void *);
+  mg_http_listen(&mgr, "http://0.0.0.0", device_dashboard_fn, &mgr);
+  MG_INFO(("Init done, starting main loop"));
+```
+
+What is left, is to add a `mg_mgr_poll()` call into the main loop.
+
+Now, add `mongoose.c`, `net.c` and `packed_fs.c` files to the Makefile.
+Rebuild, reflash the board.  Attach a serial console to the debug output,
+observe that the board obtains an IP address over DHCP:
+
+```
+847 3 mongoose.c:6784:arp_cache_add     ARP cache: added 0xc0a80001 @ 90:5c:44:55:19:8b
+84e 2 mongoose.c:6817:onstatechange     READY, IP: 192.168.0.24
+854 2 mongoose.c:6818:onstatechange            GW: 192.168.0.1
+859 2 mongoose.c:6819:onstatechange            Lease: 86363 sec
+LED: 1, tick: 2262
+LED: 0, tick: 2512
+```
+
+Fire up a browser at that IP address, and get a working dashboard, with
+real-time graph over WebSocket, with MQTT, authentication, and other things!
+See
+[full description](https://github.com/cesanta/mongoose/tree/master/examples/device-dashboard)
+for more details.
+
+![Device dashboard](https://raw.githubusercontent.com/cesanta/mongoose/master/examples/device-dashboard/screenshots/dashboard.png)
+
+A complete project source code you can find in
+[step-7-webserver](step-7-webserver) directory.
