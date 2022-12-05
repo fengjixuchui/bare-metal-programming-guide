@@ -1,25 +1,53 @@
-# Bare metal programming guide
+# A bare metal programming guide
 
-This guide is written for beginners who wish to start programming
-microcontrollers using GCC compiler and bare metal approach.  We are going to
+This guide is written for developers who wish to start programming
+microcontrollers using GCC compiler and bare metal approach. We are going to
 use a
 [Nucleo-F429ZI](https://www.st.com/en/evaluation-tools/nucleo-f429zi.html)
 development board with STM32F429 microcontroller ([buy on
 Mouser](https://eu.mouser.com/ProductDetail/STMicroelectronics/NUCLEO-F429ZI?qs=mKNKSX85ZJcE6FU0UkiXTA%3D%3D)).
-But basic principles would be applicable to any other microcontroller. To
-proceed, please install the following tools:
+But basic principles would be applicable to any other microcontroller. 
+
+In this guide, I'll show how to program a microcontroller using just a compiler
+and a datasheet, nothing else. Later I'll explain what are the vendor's CMSIS
+headers, how and why they should be used. We'll learn how to blink LEDs, how to
+redirect `printf()` to UART, how to set up the system clock, how to use
+interrupts, and even how to run a web server with device dashboard.
+
+To proceed, the following tools are required:
 
 - ARM GCC, https://launchpad.net/gcc-arm-embedded - for compiling and linking
 - GNU make, http://www.gnu.org/software/make/ - for build automation
 - ST link, https://github.com/stlink-org/stlink - for flashing
 
+Tools setup instructions for Mac. Start a terminal, and execute:
+```sh
+$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+$ brew install --cask gcc-arm-embedded make stlink
+```
+Tools setup instructions for Linux. Start a terminal, and execute:
+```sh
+$ sudo apt -y install gcc-arm-embedded make stlink-tools
+```
+
+Tools setup instructions for Windows:
+- Download and install [gcc-arm-none-eabi-10.3-2021.10-win32.exe](https://developer.arm.com/-/media/Files/downloads/gnu-rm/10.3-2021.10/gcc-arm-none-eabi-10.3-2021.10-win32.exe?rev=29bb46cfa0434fbda93abb33c1d480e6&hash=3C58D05EA5D32EF127B9E4D13B3244D26188713C) there. Enable "Add path to environment variable" during installation.
+- Create `c:\tools` folder. Download [stlink-1.7.0-x86_64-w64-mingw32.zip](https://github.com/stlink-org/stlink/releases/download/v1.7.0/stlink-1.7.0-x86_64-w64-mingw32.zip). Unpack `bin/st-flash.exe` into `c:\tools`
+- Download [make-4.4-without-guile-w32-bin.zip](https://sourceforge.net/projects/ezwinports/files/make-4.4-without-guile-w32-bin.zip/download) and unpack `bin/make.exe` into `c:\tools`
+- Add `c:\tools` to the `Path` environment variable
+- Verify installation:
+  - Download this repository https://github.com/cpq/bare-metal-programming-guide/archive/refs/heads/main.zip into `c:\`
+  - Start command prompt, and there execute the following commands:
+  ```cmd
+  C:\Users\YOURNAME> cd \
+  C:\> cd bare-metal-programming-guide-main\step-0-minimal
+  C:\bare-metal-programming-guide-main\step-0-minimal> make
+  arm-none-eabi-gcc main.c  -W -Wall -Wextra -Werror -Wundef -Wshadow -Wdouble-promotion -Wformat-truncation -fno-common -Wconversion -g3 -Os -ffunction-sections -fdata-sections -I. -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16  -Tlink.ld -nostartfiles -nostdlib --specs nano.specs -lc -lgcc -Wl,--gc-sections -Wl,-Map=firmware.elf.map -o firmware.elf
+  ```
+
 Also, download two datasheets:
 - [STM32F429 MCU datasheet](https://www.st.com/resource/en/reference_manual/dm00031020-stm32f405-415-stm32f407-417-stm32f427-437-and-stm32f429-439-advanced-arm-based-32-bit-mcus-stmicroelectronics.pdf)
 - [Nucleo-F429ZI board datasheet](https://www.st.com/resource/en/user_manual/dm00244518-stm32-nucleo144-boards-mb1137-stmicroelectronics.pdf)
-
-In the following sections I'll show how to program using just a compiler and a
-datasheet, nothing else. Later I'll explain what are the vendor's
-CMSIS headers, how and why they should be used.
 
 ## Introduction
 
@@ -1434,11 +1462,14 @@ __attribute__((section(".vectors"))) void (*tab[16 + 91])(void) = {
 ```
 
 Notice that the vector table now has entries for every possible IRQ handler,
-but all of them are "aliased" to the function `DefaultIRQHandler()` which is
-marked weak. That means that if developer creates an IRQ handler somewhere in
-the code, for example, `ETH_IRQHandler()`, then the linker will not report
-symbol conflict - but instead, it'll use developer's `ETH_IRQHandler()` instead
-of the weak `DefaultIRQHandler()`.
+like `NMI_Handler()`, `HardFault_Handler()`, etcetera; but all of them are
+"aliased" to the function `DefaultIRQHandler()` which is marked weak. This
+mechanism allows to provide a default handler function for all interrupts.  If,
+however, user code defines a function with the same name as it appears in the
+vector table, then the linker will choose user function, not the default weak
+one.  In our case, there is a `ETH_IRQHandler()` weak handler defined in the
+vector table, and Mongoose's STM32 driver code defines its own
+`ETH_IRQHandler()` which replaces it.
 
 The next step is to initialise Mongoose library: create an event manager,
 setup network driver, and start a listening HTTP connection:
