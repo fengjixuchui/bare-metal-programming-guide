@@ -1,3 +1,6 @@
+// Copyright (c) 2022 Cesanta Software Limited
+// All rights reserved
+
 #include <inttypes.h>
 #include <stdbool.h>
 
@@ -40,7 +43,7 @@ static inline void gpio_set_mode(uint16_t pin, uint8_t mode) {
   struct gpio *gpio = GPIO(PINBANK(pin));  // GPIO bank
   int n = PINNO(pin);                      // Pin number
   gpio->MODER &= ~(3U << (n * 2));         // Clear existing setting
-  gpio->MODER |= (mode & 3) << (n * 2);    // Set new mode
+  gpio->MODER |= (mode & 3U) << (n * 2);   // Set new mode
 }
 
 static inline void gpio_write(uint16_t pin, bool val) {
@@ -85,8 +88,6 @@ int main(void) {
 
 // Startup code
 __attribute__((naked, noreturn)) void _reset(void) {
-  asm("ldr sp, = _estack");  // Set initial stack pointer
-
   // Initialise memory
   extern long _sbss, _ebss, _sdata, _edata, _sidata;
   for (long *src = &_sbss; src < &_ebss; src++) *src = 0;
@@ -97,6 +98,8 @@ __attribute__((naked, noreturn)) void _reset(void) {
   for (;;) (void) 0;  // Infinite loop
 }
 
+extern void _estack(void);  // Defined in link.ld
+
 // 16 standard and 91 STM32-specific handlers
 __attribute__((section(".vectors"))) void (*tab[16 + 91])(void) = {
-    0, _reset, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, SysTick_Handler};
+    _estack, _reset, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, SysTick_Handler};

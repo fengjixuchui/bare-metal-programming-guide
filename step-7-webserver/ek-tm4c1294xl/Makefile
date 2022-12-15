@@ -11,7 +11,7 @@ else
   RM = rm -f
 endif
 
-build: firmware.elf
+build: firmware.bin
 
 firmware.elf: $(SOURCES)
 	arm-none-eabi-gcc $(SOURCES) $(CFLAGS) $(LDFLAGS) -o $@
@@ -20,7 +20,7 @@ firmware.bin: firmware.elf
 	$(DOCKER) arm-none-eabi-objcopy -O binary $< $@
 
 flash: firmware.bin
-	st-flash --reset write $(TARGET).bin 0x8000000
+	st-flash --reset write firmware.bin 0x8000000
 
 clean:
 	$(RM) firmware.*

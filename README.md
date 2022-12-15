@@ -1,18 +1,35 @@
 # A bare metal programming guide
 
-This guide is written for developers who wish to start programming
-microcontrollers using GCC compiler and bare metal approach. We are going to
-use a
-[Nucleo-F429ZI](https://www.st.com/en/evaluation-tools/nucleo-f429zi.html)
-development board with STM32F429 microcontroller ([buy on
-Mouser](https://eu.mouser.com/ProductDetail/STMicroelectronics/NUCLEO-F429ZI?qs=mKNKSX85ZJcE6FU0UkiXTA%3D%3D)).
-But basic principles would be applicable to any other microcontroller. 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://opensource.org/licenses/MIT)
+[![Build Status]( https://github.com/cpq/bare-metal-programming-guide/workflows/build/badge.svg)](https://github.com/cpq/bare-metal-programming-guide/actions)
 
-In this guide, I'll show how to program a microcontroller using just a compiler
-and a datasheet, nothing else. Later I'll explain what are the vendor's CMSIS
-headers, how and why they should be used. We'll learn how to blink LEDs, how to
-redirect `printf()` to UART, how to set up the system clock, how to use
-interrupts, and even how to run a web server with device dashboard.
+This guide is written for developers who wish to start programming
+microcontrollers using GCC compiler and a datasheet - nothing else! The
+fundamentals explained in this guide, will help you understand better how
+frameworks like Cube, Keil, Arduino - and others, work.
+
+The guide covers the following topics: memory and registers, interrupt vector
+table, startup code, linker script, build automation using `make`, GPIO
+peripheral and LED blinky, SysTick timer, UART peripheral and debug output,
+`printf` redirect to UART (IO retargeting), debugging with Segger Ozone,
+system clock setup, and web server implementation with device dashboard.
+
+Throughout the guide, we will be using a
+[Nucleo-F429ZI](https://www.st.com/en/evaluation-tools/nucleo-f429zi.html)
+development board  ([buy on
+Mouser](https://eu.mouser.com/ProductDetail/STMicroelectronics/NUCLEO-F429ZI?qs=mKNKSX85ZJcE6FU0UkiXTA%3D%3D)).
+All example projects source are provided for that board. The last (web server)
+project is the most complete, and can be used as a skeleton for the project of
+your own, dear reader.  Therefore, that last example project is provided for
+the other boards, too:
+
+- [STM32 Nucleo-F429ZI](step-7-webserver/nucleo-f429zi/)
+- [TI EK-TM4C1294XL](step-7-webserver/ek-tm4c1294xl/)
+
+Support for other boards is in progress - file an issue to suggest the board you
+work with.
+
+## Tools setup
 
 To proceed, the following tools are required:
 
@@ -20,32 +37,45 @@ To proceed, the following tools are required:
 - GNU make, http://www.gnu.org/software/make/ - for build automation
 - ST link, https://github.com/stlink-org/stlink - for flashing
 
-Tools setup instructions for Mac. Start a terminal, and execute:
+### Setup instructions for Mac
+
+Start a terminal, and execute:
+
 ```sh
 $ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-$ brew install --cask gcc-arm-embedded make stlink
-```
-Tools setup instructions for Linux. Start a terminal, and execute:
-```sh
-$ sudo apt -y install gcc-arm-embedded make stlink-tools
+$ brew install gcc-arm-embedded make stlink
 ```
 
-Tools setup instructions for Windows:
-- Download and install [gcc-arm-none-eabi-10.3-2021.10-win32.exe](https://developer.arm.com/-/media/Files/downloads/gnu-rm/10.3-2021.10/gcc-arm-none-eabi-10.3-2021.10-win32.exe?rev=29bb46cfa0434fbda93abb33c1d480e6&hash=3C58D05EA5D32EF127B9E4D13B3244D26188713C) there. Enable "Add path to environment variable" during installation.
-- Create `c:\tools` folder. Download [stlink-1.7.0-x86_64-w64-mingw32.zip](https://github.com/stlink-org/stlink/releases/download/v1.7.0/stlink-1.7.0-x86_64-w64-mingw32.zip). Unpack `bin/st-flash.exe` into `c:\tools`
+### Setup instructions for Linux (Ubuntu)
+
+Start a terminal, and execute:
+
+```sh
+$ sudo apt -y install gcc-arm-none-eabi make stlink-tools
+```
+
+### Setup instructions for Windows
+
+- Download and install [gcc-arm-none-eabi-10.3-2021.10-win32.exe](https://developer.arm.com/-/media/Files/downloads/gnu-rm/10.3-2021.10/gcc-arm-none-eabi-10.3-2021.10-win32.exe?rev=29bb46cfa0434fbda93abb33c1d480e6&hash=3C58D05EA5D32EF127B9E4D13B3244D26188713C). Enable "Add path to environment variable" during the installation
+- Create `c:\tools` folder
+- Download [stlink-1.7.0-x86_64-w64-mingw32.zip](https://github.com/stlink-org/stlink/releases/download/v1.7.0/stlink-1.7.0-x86_64-w64-mingw32.zip) and unpack `bin/st-flash.exe` into `c:\tools`
 - Download [make-4.4-without-guile-w32-bin.zip](https://sourceforge.net/projects/ezwinports/files/make-4.4-without-guile-w32-bin.zip/download) and unpack `bin/make.exe` into `c:\tools`
 - Add `c:\tools` to the `Path` environment variable
 - Verify installation:
-  - Download this repository https://github.com/cpq/bare-metal-programming-guide/archive/refs/heads/main.zip into `c:\`
-  - Start command prompt, and there execute the following commands:
-  ```cmd
-  C:\Users\YOURNAME> cd \
-  C:\> cd bare-metal-programming-guide-main\step-0-minimal
-  C:\bare-metal-programming-guide-main\step-0-minimal> make
-  arm-none-eabi-gcc main.c  -W -Wall -Wextra -Werror -Wundef -Wshadow -Wdouble-promotion -Wformat-truncation -fno-common -Wconversion -g3 -Os -ffunction-sections -fdata-sections -I. -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16  -Tlink.ld -nostartfiles -nostdlib --specs nano.specs -lc -lgcc -Wl,--gc-sections -Wl,-Map=firmware.elf.map -o firmware.elf
-  ```
+  - Download and unzip [this repository](https://github.com/cpq/bare-metal-programming-guide/archive/refs/heads/main.zip) into `c:\`
+  - Start command prompt, and execute the following:
+  <pre style="color: silver;">
+  C:\Users\YOURNAME> <b style="color: black;">cd \</b>
+  C:\> <b style="color: black;">cd bare-metal-programming-guide-main\step-0-minimal</b>
+  C:\bare-metal-programming-guide-main\step-0-minimal> <b style="color: black;">make</b>
+  arm-none-eabi-gcc main.c  -W -Wall -Wextra -Werror ...
+  </pre>
 
-Also, download two datasheets:
+
+### Required datasheets
+
+Download and open the following datasheets:
+
 - [STM32F429 MCU datasheet](https://www.st.com/resource/en/reference_manual/dm00031020-stm32f405-415-stm32f407-417-stm32f427-437-and-stm32f429-439-advanced-arm-based-32-bit-mcus-stmicroelectronics.pdf)
 - [Nucleo-F429ZI board datasheet](https://www.st.com/resource/en/user_manual/dm00244518-stm32-nucleo144-boards-mb1137-stmicroelectronics.pdf)
 
@@ -94,7 +124,7 @@ There are many different peripherals. One of the simpler ones are GPIO
 (General Purpose Input Output), which allow user to set MCU pins
 into "output mode" and set high or low voltage on them. Or, set pins into
 an "input mode" and read voltage values from them. There is a UART peripheral
-which can transmit and receive serial data over two pins using RS232 protocol.
+which can transmit and receive serial data over two pins using serial protocol.
 There are many other peripherals.
 
 Often, there are multiple "instances" of the same peripheral, for example
@@ -267,9 +297,11 @@ __attribute__((naked, noreturn)) void _reset(void) {
   for (;;) (void) 0;  // Infinite loop
 }
 
+extern void _estack(void);  // Defined in link.ld
+
 // 16 standard and 91 STM32-specific handlers
 __attribute__((section(".vectors"))) void (*tab[16 + 91])(void) = {
-  0, _reset
+  _estack, _reset
 };
 ```
 
@@ -282,18 +314,15 @@ pointers to functions, that return nothing (void) and take to arguments. Each
 such function is an IRQ handler (Interrupt ReQuest handler). An array of those
 handlers is called a vector table.
 
-The vector table `tab` we put in a separate section called `.vectors` - that
-we need later to tell the linker to put that section right at the beginning
-of the generated firmware - and consecutively, at the beginning of flash
-memory. We leave the rest of vector table filled with zeroes.
-
-Note that we do not set the first entry in the vector table, which is an
-initial value for the stack pointer. Why? Because we don't know the correct
-value for it. We'll handle it later.
+The vector table `tab` we put in a separate section called `.vectors` - that we
+need later to tell the linker to put that section right at the beginning of the
+generated firmware - and consecutively, at the beginning of flash memory. The
+first two entries are: the value of the stack pointer register, and the
+firmware's entry point.  We leave the rest of vector table filled with zeroes.
 
 ### Compilation
 
-Let's compile our code:
+Let's compile our code. Start a terminal (or a command prompt on Windows) and execute:
 
 ```sh
 $ arm-none-eabi-gcc -mcpu=cortex-m4 main.c -c
@@ -336,9 +365,6 @@ in RAM - therefore our `_reset()` function should copy the contents of the
 `.data` section to RAM. Also it has to write zeroes to the whole `.bss`
 section. Our `.data` and `.bss` sections are empty, but let's modify our
 `_reset()` function anyway to handle them properly.
-
-Also, our `_reset()` function should set the initial stack pointer, cause 
-our vector table has zero in the corresponding entry at index 0.
 
 In order to do all that, we must know where stack starts, and where data and
 bss section start. This we can specify in the "linker script", which is a file
@@ -413,9 +439,9 @@ Same for `.bss` section:
 
 ### Startup code
 
-Now we can update our `_reset()` function. We initialize stack pointer,
-copy data section to RAM, and initialise bss section to zeroes. Then, we
-call main() function - and fall into infinite loop in case if main() returns:
+Now we can update our `_reset()` function. We copy `.data` section to RAM, and
+initialise bss section to zeroes. Then, we call main() function - and fall into
+infinite loop in case if main() returns:
 
 ```c
 int main(void) {
@@ -424,8 +450,6 @@ int main(void) {
 
 // Startup code
 __attribute__((naked, noreturn)) void _reset(void) {
-  asm("ldr sp, = _estack");  // Set initial stack pointer
-
   // memset .bss to zero, and copy .data section to RAM region
   extern long _sbss, _ebss, _sdata, _edata, _sidata;
   for (long *src = &_sbss; src < &_ebss; src++) *src = 0;
@@ -439,6 +463,18 @@ __attribute__((naked, noreturn)) void _reset(void) {
 The following diagram visualises how `_reset()` initialises .data and .bss:
 
 ![](images/mem2.svg)
+
+The `firmware.bin` file is just a concatenation of the three sections:
+`.vectors` (IRQ vector table), `.text` (code) and `.data` (data).  Those
+sections were built according to the linker script: `.vectors` lies at the very
+beginning of flash, then `.text` follows immediately after, and `.data` lies
+far above. Addresses in `.text` are in the flash region, and addresses in
+`.data` are in the RAM region.  If some function has address e.g. `0x8000100`,
+then it it located exactly at that address on flash. But if the code accesses
+some variable in the `.data` section by the address e.g. `0x20000200`, then
+there is nothing at that address, because at boot, `.data` section in the
+`firmware.bin` resides in flash! That's why the startup code must relocate
+`.data` section from flash region to the RAM region.
 
 Now we are ready to produce a full firmware file `firmware.elf`:
 
@@ -1006,7 +1042,7 @@ Before that, let's organise our source code in the following way:
 - move all API definitions to the file `mcu.h`
 - move startup code to `startup.c`
 - create an empty file `syscalls.c` for newlib "syscalls"
-- modify Makefile to addd `syscalls.c` and `startup.c` to the build
+- modify Makefile to add `syscalls.c` and `startup.c` to the build
 
 After moving all API definitions to the `mcu.h`, our `main.c` file becomes
 quite compact. Note that it does not have any mention of the low-level
@@ -1444,7 +1480,20 @@ Mongoose's driver uses Ethernet interrupt, thus we need to update `startup.c`
 and add `ETH_IRQHandler` to the vector table. Let's reorganise vector table
 definition in `startup.c` in a way that does not require any modification
 to add an interrupt handler function. The idea is to use a "weak symbol"
-concept:
+concept.
+
+A function can be marked "weak" and it works like a normal function.  The
+difference comes when a source code defines a function with the same name
+elsewhere. Normally, two functions with the same name make a build fail.
+However if one function is marked weak, then a build succeeds and linker
+selects a non-weak function. This gives an ability to provide a "default"
+function in a boilerplate, with an ability to override it by simply creating a
+function with the same name elsewhere in the code.
+
+Here how it works in our case. We want to fill a vector table with default
+handlers, but give user an ability to override any handler. For that, we create
+a function `DefaultIRQHandler()` and mark it weak. Then, for every IRQ handler,
+we declare a handler name and make it an alias to `DefaultIRQHandler()`:
 
 ```c
 void __attribute__((weak)) DefaultIRQHandler(void) {
@@ -1461,15 +1510,9 @@ __attribute__((section(".vectors"))) void (*tab[16 + 91])(void) = {
     ...
 ```
 
-Notice that the vector table now has entries for every possible IRQ handler,
-like `NMI_Handler()`, `HardFault_Handler()`, etcetera; but all of them are
-"aliased" to the function `DefaultIRQHandler()` which is marked weak. This
-mechanism allows to provide a default handler function for all interrupts.  If,
-however, user code defines a function with the same name as it appears in the
-vector table, then the linker will choose user function, not the default weak
-one.  In our case, there is a `ETH_IRQHandler()` weak handler defined in the
-vector table, and Mongoose's STM32 driver code defines its own
-`ETH_IRQHandler()` which replaces it.
+Now, we can define any IRQ handler in our code, and it will replace the default
+one. This is what happens in our case: there is a `ETH_IRQHandler()` defined
+by the Mongoose's STM32 driver which replaces a default handler.
 
 The next step is to initialise Mongoose library: create an event manager,
 setup network driver, and start a listening HTTP connection:
