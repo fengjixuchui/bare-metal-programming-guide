@@ -5,21 +5,16 @@
 #include "mongoose.h"
 
 static volatile uint32_t s_ticks;
-void SysTick_Handler(void) {
-  s_ticks++;
-}
-
-uint64_t mg_millis(void) {  // Declare our own uptime function
-  return s_ticks;           // Return number of milliseconds since boot
-}
+void SysTick_Handler(void) { s_ticks++; }     // IRQ handler
+uint64_t mg_millis(void) { return s_ticks; }  // For Mongoose
 
 int main(void) {
   uint16_t led = PIN('B', 7);            // Blue LED
   clock_init();                          // Run at 180Mhz
-  systick_init(FREQ / 1000);             // Tick every 1 ms
+  systick_init(SYS_FREQUENCY / 1000);    // Tick every 1 ms
   gpio_set_mode(led, GPIO_MODE_OUTPUT);  // Set blue LED to output mode
   uart_init(UART3, 115200);              // Initialise UART
-  uint32_t timer = 0, period = 250;      // Declare timer and 250ms period
+  uint32_t timer = 0, period = 500;      // Declare timer and 500ms period
 
   // Initialise Ethernet. Enable MAC GPIO pins, see
   // https://www.farnell.com/datasheets/2014265.pdf section 6.10

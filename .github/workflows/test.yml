@@ -6,7 +6,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - run: sudo apt-get update
-    - run: sudo apt -y install gcc-arm-none-eabi make stlink-tools
+    - run: sudo apt -y install gcc-arm-none-eabi make
     - run: make -C step-0-minimal
     - run: make -C step-1-blinky
     - run: make -C step-2-systick
@@ -15,12 +15,12 @@ jobs:
     - run: make -C step-5-cmsis
     - run: make -C step-6-clock
     - run: make -C step-7-webserver/nucleo-f429zi
-    - run: make -C step-7-webserver/pico-w
+    - run: make -C step-7-webserver/pico-w5500 test VCON_API_KEY=${{secrets.VCON_API_KEY}}
   macos:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v3
-    - run: HOMEBREW_NO_AUTO_UPDATE=1 brew install gcc-arm-embedded make stlink
+    - run: HOMEBREW_NO_AUTO_UPDATE=1 brew install gcc-arm-embedded make
     - run: make -C step-0-minimal
     - run: make -C step-1-blinky
     - run: make -C step-2-systick
@@ -29,4 +29,4 @@ jobs:
     - run: make -C step-5-cmsis
     - run: make -C step-6-clock
     - run: make -C step-7-webserver/nucleo-f429zi
-    - run: make -C step-7-webserver/pico-w
+    - run: make -C step-7-webserver/pico-w5500

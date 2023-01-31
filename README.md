@@ -3,31 +3,34 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://opensource.org/licenses/MIT)
 [![Build Status]( https://github.com/cpq/bare-metal-programming-guide/workflows/build/badge.svg)](https://github.com/cpq/bare-metal-programming-guide/actions)
 
+English | [中文](README_zh-CN.md)
+
 This guide is written for developers who wish to start programming
-microcontrollers using GCC compiler and a datasheet - nothing else! The
-fundamentals explained in this guide, will help you understand better how
-frameworks like Cube, Keil, Arduino - and others, work.
+microcontrollers using a GCC compiler and a datasheet, without using any
+framework! This guide explains the fundamentals - and it helps to
+understand how embedded frameworks (Cube, Keil, Arduino, etc) work.
 
 The guide covers the following topics: memory and registers, interrupt vector
 table, startup code, linker script, build automation using `make`, GPIO
 peripheral and LED blinky, SysTick timer, UART peripheral and debug output,
-`printf` redirect to UART (IO retargeting), debugging with Segger Ozone,
-system clock setup, and web server implementation with device dashboard.
+`printf` redirect to UART (IO retargeting), debugging with Segger Ozone, system
+clock setup, using CMSIS headers, web server implementation with device
+dashboard, and automatic tests.
 
-Throughout the guide, we will be using a
-[Nucleo-F429ZI](https://www.st.com/en/evaluation-tools/nucleo-f429zi.html)
-development board  ([buy on
-Mouser](https://eu.mouser.com/ProductDetail/STMicroelectronics/NUCLEO-F429ZI?qs=mKNKSX85ZJcE6FU0UkiXTA%3D%3D)).
-All example projects source are provided for that board. The last (web server)
-project is the most complete, and can be used as a skeleton for the project of
-your own, dear reader.  Therefore, that last example project is provided for
-the other boards, too:
+Every chapter in this guide comes with a complete source code which gradually
+progress in functionality and completeness.  The last (web server) chapter is
+the most complete, and can be used as a skeleton for the project of your own,
+dear reader.  Therefore, that last example project is provided for the other
+boards too. In this tutorial we'll use the Nucleo-F429ZI development board, so
+go ahead and download the "mcu datasheet" and the "board datasheet" for it.
 
-- [STM32 Nucleo-F429ZI](step-7-webserver/nucleo-f429zi/)
-- [TI EK-TM4C1294XL](step-7-webserver/ek-tm4c1294xl/)
+| Board | MCU datasheet | Board datasheet | Status | Skeleton project |
+| ----- | ------------- | --------------- | ------ | ---------------- |
+| STM32 Nucleo-F429ZI | [mcu datasheet](https://www.st.com/resource/en/reference_manual/dm00031020-stm32f405-415-stm32f407-417-stm32f427-437-and-stm32f429-439-advanced-arm-based-32-bit-mcus-stmicroelectronics.pdf) | [board datasheet](https://www.st.com/resource/en/user_manual/dm00244518-stm32-nucleo144-boards-mb1137-stmicroelectronics.pdf) | complete |  [link](step-7-webserver/nucleo-f429zi/) |
+| TI EK-TM4C1294XL | [mcu datasheet](https://www.ti.com/lit/ds/symlink/tm4c1294ncpdt.pdf) | [board datasheet](https://www.ti.com/lit/ug/spmu365c/spmu365c.pdf) | complete | [link](step-7-webserver/ek-tm4c1294xl) | 
+| RP2040 Pico-W5500 | [mcu datasheet](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf) | [board datasheet](https://docs.wiznet.io/Product/iEthernet/W5500/w5500-evb-pico) | complete | [link](step-7-webserver/pico-w5500/) |
 
-Support for other boards is in progress - file an issue to suggest the board you
-work with.
+Feel free to file an issue to support the board you work with.
 
 ## Tools setup
 
@@ -51,6 +54,7 @@ $ brew install gcc-arm-embedded make stlink
 Start a terminal, and execute:
 
 ```sh
+$ sudo apt -y update
 $ sudo apt -y install gcc-arm-none-eabi make stlink-tools
 ```
 
@@ -71,13 +75,6 @@ $ sudo apt -y install gcc-arm-none-eabi make stlink-tools
   arm-none-eabi-gcc main.c  -W -Wall -Wextra -Werror ...
   </pre>
 
-
-### Required datasheets
-
-Download and open the following datasheets:
-
-- [STM32F429 MCU datasheet](https://www.st.com/resource/en/reference_manual/dm00031020-stm32f405-415-stm32f407-417-stm32f427-437-and-stm32f429-439-advanced-arm-based-32-bit-mcus-stmicroelectronics.pdf)
-- [Nucleo-F429ZI board datasheet](https://www.st.com/resource/en/user_manual/dm00244518-stm32-nucleo144-boards-mb1137-stmicroelectronics.pdf)
 
 ## Introduction
 
@@ -155,18 +152,48 @@ from A0 to A15, to input mode:
   * (volatile uint32_t *) (0x40020000 + 0) = 0;  // Set A0-A15 to input mode
 ```
 
-By setting individual bits, we can selectively set specific pins to a desired
-mode. For example, this snippet sets pin A3 to output mode:
+Note the `volatile` specifier. Its meaning will be covered later.  By setting
+individual bits, we can selectively set specific pins to a desired mode. For
+example, this snippet sets pin A3 to output mode:
 
 ```c
-  * (volatile uint32_t *) (0x40020000 + 0) &= ~(3 << 6);  // CLear bits 6-7
-  * (volatile uint32_t *) (0x40020000 + 0) |= 1 << 6;     // Set bits 6-7 to 1
+  * (volatile uint32_t *) (0x40020000 + 0) &= ~(3 << 6);  // CLear bit range 6-7
+  * (volatile uint32_t *) (0x40020000 + 0) |= 1 << 6;     // Set bit range 6-7 to 1
 ```
 
-Some registers are not mapped to the MCU peripherals, but they are mapped to
-the ARM CPU configuration and control. For example, there is a "Reset at clock
-control" unit (RCC), described in section 6 of the datasheet. It describes
-registers that allow to set systems clock and other things.
+Let me explain those bit operations. Our goal is to set bits 6-7, which are
+responsible for the pin 3 of GPIOA peripheral, to a specific value (1, in our
+case). This is done in two steps. First, we must clear the current value of
+bits 6-7, because it may hold some value already. Then we must set bits 6-7
+to the value we want.
+
+So, first, we must set bit range 6-7 (two bits at position 6) to zero. How do
+we set a number of bits to zero? In four steps:
+
+| Action | Expression | Bits (first 12 of 32) |
+| - | - | - |
+| Get a number with N contiguous bits set: `2^N-1`, N=2 | `3`  | `000000000011` |
+| Shift that number X positions left | `(3<<6)` | `000011000000` |
+| Invert the number: turn zeros to ones, and ones to zeroes | `~(3<<6)` | `111100111111` |
+| Logical AND with existing value | `VAL &= ~(3<<6)` | `xxxx00xxxxxx` |
+
+Note that the last operation, logical AND, turns N bits at position X to zero
+(because they are ANDed with 0), but retains the value of all other bits
+(because they are ANDed with 1).  Retaining existing value is important, cause
+we don't want to change settings in other bit ranges. So in general, if we want
+to clear N bits at position X:
+
+```c
+REGISTER &= ~((2^N - 1) << X);
+```
+
+And, finally, we want to set a given bit range to the value we want. We
+shift that value X positions left, and OR with the current value of the whole
+register (in order to retain other bits' values):
+
+```c
+REGISTER |= VALUE << X;
+```
 
 ## Human-readable peripherals programming
 
@@ -175,8 +202,8 @@ register by direct accessing certain memory addresses. Let's look at the
 snippet that sets pin A3 to output mode:
 
 ```c
-  * (volatile uint32_t *) (0x40020000 + 0) &= ~(3 << 6);  // CLear bits 6-7
-  * (volatile uint32_t *) (0x40020000 + 0) |= 1 << 6;     // Set bits 6-7 to 1
+  * (volatile uint32_t *) (0x40020000 + 0) &= ~(3 << 6);  // CLear bit range 6-7
+  * (volatile uint32_t *) (0x40020000 + 0) |= 1 << 6;     // Set bit range 6-7 to 1
 ```
 
 That is pretty cryptic. Without extensive comments, such code would be quite
@@ -262,7 +289,7 @@ self-explanatory and human readable.
 
 ## MCU boot and vector table
 
-When STM32F429 MCU boots, it reads a so-called "vector table" from the
+When an ARM MCU boots, it reads a so-called "vector table" from the
 beginning of flash memory. A vector table is a concept common to all ARM MCUs.
 That is a array of 32-bit addresses of interrupt handlers. First 16 entries
 are reserved by ARM and are common to all ARM MCUs. The rest of interrupt
@@ -273,10 +300,11 @@ and more complex MCUs have many.
 Vector table for STM32F429 is documented in Table 62. From there we can learn
 that there are 91 peripheral handlers, in addition to the standard 16.
 
-At this point, we are interested in the first two entries of the vector table,
-because they play a key role in the MCU boot process. Those two first values
-are: initial stack pointer, and an address of the boot function to execute
-(a firmware entry point).
+Every entry in the vector table is an address of a function that MCU executes
+when a hardware interrupt (IRQ) triggers. The exception are first two entries,
+which play a key role in the MCU boot process.  Those two first values are: an
+initial stack pointer, and an address of the boot function to execute (a
+firmware entry point).
 
 So now we know, that we must make sure that our firmware should be composed in
 a way that the 2nd 32-bit value in the flash should contain an address of
@@ -335,7 +363,6 @@ format, which contains several sections. Let's see them:
 ```sh
 $ arm-none-eabi-objdump -h main.o
 ...
-Sections:
 Idx Name          Size      VMA       LMA       File off  Algn
   0 .text         00000002  00000000  00000000  00000034  2**1
                   CONTENTS, ALLOC, LOAD, READONLY, CODE
@@ -345,10 +372,7 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   ALLOC
   3 .vectors      000001ac  00000000  00000000  00000038  2**2
                   CONTENTS, ALLOC, LOAD, RELOC, DATA
-  4 .comment      0000004a  00000000  00000000  000001e4  2**0
-                  CONTENTS, READONLY
-  5 .ARM.attributes 0000002e  00000000  00000000  0000022e  2**0
-                  CONTENTS, READONLY
+...
 ```
 
 Note that VMA/LMA addresses for sections are set to 0 - meaning, `main.o`
@@ -373,7 +397,7 @@ address space, and which symbols to create.
 
 ### Linker script
 
-Create a minimal linker script `link.ld`, and copy-paste contents from
+Create a file `link.ld`, and copy-paste contents from
 [step-0-minimal/link.ld](step-0-minimal/link.ld). Below is the explanation:
 
 ```
@@ -487,7 +511,6 @@ Let's examine sections in firmware.elf:
 ```sh
 $ arm-none-eabi-objdump -h firmware.elf
 ...
-Sections:
 Idx Name          Size      VMA       LMA       File off  Algn
   0 .vectors      000001ac  08000000  08000000  00010000  2**2
                   CONTENTS, ALLOC, LOAD, DATA
@@ -525,6 +548,11 @@ use `make` command line tool to automate the whole process. `make` utility
 uses a configuration file named `Makefile` where it reads instructions
 how to execute actions. This automation is great because it also documents the
 process of building firmware, used compilation flags, etc.
+
+There is a great Makefile tutorial at https://makefiletutorial.com - for those
+new to `make`, I suggest to take a look. Below, I list the most essential
+concepts required to understand our simple bare metal Makefile. Those who
+already familiar with `make`, can skip this section.
 
 The `Makefile` format is simple:
 
@@ -715,7 +743,7 @@ int main(void) {
   uint16_t led = PIN('B', 7);            // Blue LED
   RCC->AHB1ENR |= BIT(PINBANK(led));     // Enable GPIO clock for LED
   gpio_set_mode(led, GPIO_MODE_OUTPUT);  // Set blue LED to output mode
-  for (;;) asm volatile("nop");          // Infinite loop
+  for (;;) (void) 0;                     // Infinite loop
   return 0;
 }
 ```
@@ -730,7 +758,7 @@ register (i.e. set pin low). Let's define an API function for that:
 ```c
 static inline void gpio_write(uint16_t pin, bool val) {
   struct gpio *gpio = GPIO(PINBANK(pin));
-  gpio->BSRR |= (1U << PINNO(pin)) << (val ? 0 : 16);
+  gpio->BSRR = (1U << PINNO(pin)) << (val ? 0 : 16);
 }
 ```
 
@@ -740,7 +768,7 @@ a NOP instruction a given number of times:
 
 ```c
 static inline void spin(volatile uint32_t count) {
-  while (count--) asm("nop");
+  while (count--) (void) 0;
 }
 ```
 
@@ -770,10 +798,10 @@ see that SysTick has four registers:
 - VAL - a current counter value, decremented on each clock cycle
 - CALIB - calibration register
 
-Every time VAL drops to zero, a SysTick interrupt is generated. The SysTick
-interrupt index in the vector table is 15, so we need to set it. Upon boot,
-our board Nucleo-F429ZI runs at 16Mhz. We can configure the SysTick counter
-to trigger interrupt each millisecond.
+Every time VAL drops to zero, a SysTick interrupt is generated.
+The SysTick interrupt index in the vector table is 15, so we need to set it.
+Upon boot, our board Nucleo-F429ZI runs at 16Mhz. We can configure the SysTick
+counter to trigger interrupt each millisecond.
 
 First, let's define a SysTick peripheral. We know 4 registers, and from the
 datasheet we can learn that the SysTick address is 0xe000e010. So:
@@ -806,13 +834,59 @@ every millisecond. We should have interrupt handler function defined - here
 it is, we simply increment a 32-bit millisecond counter:
 
 ```c
-static volatile uint32_t s_ticks;
+static volatile uint32_t s_ticks; // volatile is important!!
 void SysTick_Handler(void) {
   s_ticks++;
 }
 ```
 
-And we should add this handler to the vector table:
+With 16MHz clock, we init SysTick counter to trigger an interrupt every
+16000 cycles: the `SYSTICK->VAL` initial value is 15999, then it decrements
+on each cycle by 1, and when it reaches 0, an interrupt is generated. The
+firmware code execution gets interrupted: a `SysTick_Handler()` function is
+called to increment `s_tick` variable. Here how it looks like on a time scale:
+
+![](images/systick.svg)
+
+
+The `volatile` specifier is required here becase `s_ticks` is modified by the
+interrupt handler. `volatile` prevents the compiler to optimise/cache `s_ticks`
+value in a CPU register: instead, generated code always accesses memory.  That
+is why `volatile` keywords is present in the peripheral struct definitions,
+too. Since this is important to understand, let's demonstrate that on a simple
+function: Arduino's `delay()`. Let is use our `s_ticks` variable:
+
+```c
+void delay(unsigned ms) {            // This function waits "ms" milliseconds
+ uint32_t until = s_ticks + ms;      // Time in a future when we need to stop
+ while (s_ticks < until) (void) 0;   // Loop until then
+}
+```
+
+Now let's compile this code with, and without `volatile` specifier for `s_ticks`
+and compare generated machine code:
+
+```
+// NO VOLATILE: uint32_t s_ticks;       |  // VOLATILE: volatile uint32_t s_ticks;
+                                        |
+ ldr     r3, [pc, #8]  // cache s_ticks |  ldr     r2, [pc, #12]
+ ldr     r3, [r3, #0]  // in r3         |  ldr     r3, [r2, #0]   // r3 = s_ticks
+ adds    r0, r3, r0    // r0 = r3 + ms  |  adds    r3, r3, r0     // r3 = r3 + ms
+                                        |  ldr     r1, [r2, #0]   // RELOAD: r1 = s_ticks
+ cmp     r3, r0        // ALWAYS FALSE  |  cmp     r1, r3         // compare
+ bcc.n   200000d2 <delay+0x6>           |  bcc.n   200000d2 <delay+0x6>
+ bx      lr                             |  bx      lr
+```
+
+If there is no `volalile`, the `delay()` function will loop forever and never
+return. That is because it caches (optimises) the value of `s_ticks` in a
+register and never updates it. A compiler does that because it doesn't know
+that `s_ticks` can be updated elsewhere - by the interrupt handler!  The
+generated code with `volatile`, on the other hand, loads `s_ticks` value on
+each iteration.  So, the rule of thumb: **those values in memory that get
+updated by interrupt handlers, or by the hardware, declare as `volatile`**.
+
+Now we should add `SysTick_Handler()` interrupt handler to the vector table:
 
 ```c
 __attribute__((section(".vectors"))) void (*tab[16 + 91])(void) = {
@@ -824,7 +898,7 @@ for arbitrary periodic timers:
 
 ```c
 // t: expiration time, prd: period, now: current time. Return true if expired
-bool timer_expired(uint32_t *t, uint64_t prd, uint64_t now) {
+bool timer_expired(uint32_t *t, uint32_t prd, uint32_t now) {
   if (now + prd < *t) *t = 0;                    // Time wrapped? Reset timer
   if (*t == 0) *t = now + prd;                   // First poll? Set expiration
   if (*t > now) return false;                    // Not expired yet, return
@@ -837,7 +911,7 @@ Now we are ready to update our main loop and use a precise timer for LED blink.
 For example, let's use 250 milliseconds blinking interval:
 
 ```c
-  uint32_t timer, period = 250;          // Declare timer and 250ms period
+  uint32_t timer, period = 500;          // Declare timer and 500ms period
   for (;;) {
     if (timer_expired(&timer, period, s_ticks)) {
       static bool on;       // This block is executed
@@ -924,23 +998,23 @@ Now we're ready to create a UART initialization API function:
 #define FREQ 16000000  // CPU frequency, 16 Mhz
 static inline void uart_init(struct uart *uart, unsigned long baud) {
   // https://www.st.com/resource/en/datasheet/stm32f429zi.pdf
-  uint8_t af = 0;           // Alternate function
+  uint8_t af = 7;           // Alternate function
   uint16_t rx = 0, tx = 0;  // pins
 
   if (uart == UART1) RCC->APB2ENR |= BIT(4);
   if (uart == UART2) RCC->APB1ENR |= BIT(17);
   if (uart == UART3) RCC->APB1ENR |= BIT(18);
 
-  if (uart == UART1) af = 4, tx = PIN('A', 9), rx = PIN('A', 10);
-  if (uart == UART2) af = 4, tx = PIN('A', 2), rx = PIN('A', 3);
-  if (uart == UART3) af = 7, tx = PIN('D', 8), rx = PIN('D', 9);
+  if (uart == UART1) tx = PIN('A', 9), rx = PIN('A', 10);
+  if (uart == UART2) tx = PIN('A', 2), rx = PIN('A', 3);
+  if (uart == UART3) tx = PIN('D', 8), rx = PIN('D', 9);
 
   gpio_set_mode(tx, GPIO_MODE_AF);
   gpio_set_af(tx, af);
   gpio_set_mode(rx, GPIO_MODE_AF);
   gpio_set_af(rx, af);
   uart->CR1 = 0;                           // Disable this UART
-  uart->BRR = FREQ / baud;                 // FREQ is a CPU frequency 
+  uart->BRR = FREQ / baud;                 // FREQ is a UART bus frequency
   uart->CR1 |= BIT(13) | BIT(2) | BIT(3);  // Set UE, RE, TE
 }
 ```
@@ -1061,7 +1135,7 @@ int main(void) {
   systick_init(16000000 / 1000);         // Tick every 1 ms
   gpio_set_mode(led, GPIO_MODE_OUTPUT);  // Set blue LED to output mode
   uart_init(UART3, 115200);              // Initialise UART
-  uint32_t timer = 0, period = 250;      // Declare timer and 250ms period
+  uint32_t timer = 0, period = 500;      // Declare timer and 500ms period
   for (;;) {
     if (timer_expired(&timer, period, s_ticks)) {
       static bool on;                      // This block is executed
@@ -1269,7 +1343,7 @@ standard C inludes, vendor CMSIS include, defines to PIN, BIT, FREQ, and
 #define PINBANK(pin) (pin >> 8)
 
 static inline void spin(volatile uint32_t count) {
-  while (count--) asm("nop");
+  while (count--) (void) 0;
 }
 
 static inline bool timer_expired(uint32_t *t, uint32_t prd, uint32_t now) {
@@ -1560,3 +1634,188 @@ for more details.
 
 A complete project source code you can find in
 [step-7-webserver](step-7-webserver) directory.
+
+## Automated firmware builds (software CI)
+
+It is a good practice for a software project to have continuous
+integration (CI). On every change pushed to the
+repository, CI automatically rebuilds and tests all components.
+
+Github makes it easy to do. We can create a `.github/workflows/test.yml` file
+which is a CI configuration file. In that file, we can install ARM GCC
+and run `make` in every example directory to build respective firmwares.
+
+Long story short! This tells Github to run on every repo push:
+https://github.com/cpq/bare-metal-programming-guide/blob/b0820b5c62b74a9b4456854feb376cda8cde4ecd/.github/workflows/test.yml#L1-L2
+
+This installs ARM GCC compiler:
+https://github.com/cpq/bare-metal-programming-guide/blob/b0820b5c62b74a9b4456854feb376cda8cde4ecd/.github/workflows/test.yml#L9
+
+This builds a firmware in every example directory:
+https://github.com/cpq/bare-metal-programming-guide/blob/b0820b5c62b74a9b4456854feb376cda8cde4ecd/.github/workflows/test.yml#L10-L18
+
+That's it!  Extremely simple and extremely powerful. Now if we push a change to
+the repo which breaks a build, Github will notify us. On success, Github will
+keep quiet.  See an [example successful
+run](https://github.com/cpq/bare-metal-programming-guide/actions/runs/3840030588).
+
+
+## Automated firmware tests (hardware CI)
+
+Would it be great to also test built firmware binaries on a real hardware, to
+test not only the build process, but that the built firmware is correct and
+functional?
+
+It is not trivial to build such a system ad hoc. For example,
+one can setup a dedicated test workstation, attach a tested device
+(e.g. Nucleo-F429ZI board) to it, and write a piece of software for remote
+firmware upload and test using a built-in debugger. Possible, but fragile,
+consumes a lot of efforts and needs a lot of attention.
+
+The alternative is to use one of the commercial hardware test systems (or EBFs,
+Embedded Board Farms), though such commercial solutions are quite expensive. 
+
+But there is an easy way.
+
+### Solution: ESP32 + vcon.io
+
+Using https://vcon.io service, which implements remote firmware update and
+UART monitor, we can:
+
+1. Take any ESP32 or ESP32C3 device (e.g. any inexpensive development board)
+2. Flash a pre-built firmware on it, turning ESP32 into a remotely-controlled programmer
+3. Wire ESP32 to your target device: SWD pins for flashing, UART pins for capturing output
+4. Configure ESP32 to register on https://dash.vcon.io management dashboard
+
+When done, your target device will have an authenticated, secure RESTful
+API for reflashing and capturing device output. It can be called from anywhere,
+for example from the software CI:
+
+![VCON module operation](images/hero.svg)
+
+Note: the [vcon.io](https://vcon.io) service is run by Cesanta - the company I
+work for. It is a paid service with a freebie quota: if you have just a few
+devices to manage, it is completely free.
+
+### Configuring and wiring ESP32
+
+Take any ESP32 or ESP32C3 device - a devboard, a module, or your custom device.
+My recommendation is ESP32C3 XIAO devboard
+([buy on Digikey](https://www.digikey.ie/en/products/detail/seeed-technology-co-ltd/113991054/16652880))
+because of its low price (about 5 EUR) and small form factor.
+
+We're going to assume that the target device is a Raspberry Pi
+[W5500-EVB-Pico](https://docs.wiznet.io/Product/iEthernet/W5500/w5500-evb-pico)
+board with a built-in Ethernet interface. If your device is different,
+adjust the "Wiring" step according to your device's pinout.
+
+- Follow [Flashing ESP32](https://vcon.io/docs/#module-flashing) to flash your ESP32
+- Follow [Network Setup](https://vcon.io/docs/#module-registration) to register ESP32 on https://dash.vcon.io
+- Follow [Wiring](https://vcon.io/docs/#module-to-device-wiring) to wire ESP32 to your device
+
+This is how a configured device breadboard setup may look like:
+![](images/breadboard.webp)
+
+This is how a configured device dashboard looks like:
+![](images/screenshot.webp)
+
+Now, you can reflash your device with a single command:
+
+```sh
+curl -su :API_KEY https://dash.vcon.io/api/v3/devices/ID/ota --data-binary @firmware.bin
+```
+
+Where `API_KEY` is the dash.vcon.io authentication key, `ID` is the registered
+device number, and `firmware.bin` is the name of the newly built firmware.  You
+can get the `API_KEY` by clicking on the "api key" link on a dashboard.  The
+device ID is listed in the table.
+
+We can also capture device output with a single command: 
+
+```sh
+curl -su :API_KEY https://dash.vcon.io/api/v3/devices/ID/tx?t=5
+```
+
+There, `t=5` means wait 5 seconds while capturing UART output.
+
+Now, we can use those two commands in any software CI platform to test a new
+firmware on a real device, and test device's UART output against some expected
+keywords. 
+
+### Integrating with Github Actions
+
+Okay, our software CI builds a firmware image for us. It would be nice to
+test that firmware image on a real hardware. And now we can!
+We should add few extra commands that use `curl` utility to send a built
+firmware to the test board, and then capture its debug output.
+
+A `curl` command requires a secret API key, which we do not want to expose to
+the public. The right way to go is to:
+1. Go to the project settings / Secrets / Actions
+2. Click on "New repository secret" button
+3. Give it a name, `VCON_API_KEY`, paste the value into a "Secret" box, click "Add secret"
+
+One of the example projects builds firmware for the RP2040-W5500 board, so
+let's flash it using a `curl` command and a saved API key. The best way is
+to add a Makefile target for testing, and let Github Actions (our software CI)
+call it:
+https://github.com/cpq/bare-metal-programming-guide/blob/8d419f5e7718a8dcacad2ddc2f899eb75f64271e/.github/workflows/test.yml#L18
+
+Note that we pass a `VCON_API_KEY` environment variable to `make`. Also note
+that we're invoking `test` Makefile target, which should build and test our
+firmware. Here is the `test` Makefile target:
+https://github.com/cpq/bare-metal-programming-guide/blob/d9bced31b1ccde8eca4d6dc38440e104dba053ce/step-7-webserver/pico-w5500/Makefile#L32-L39
+
+Explanation:
+- line 34: The `test` target depends on the `upload` target, so `upload`
+  is executed first (see line 38)
+- line 35: Capture UART log for 5 seconds and save it to `/tmp/output.txt`
+- line 36: Search for the string `Ethernet: up` in the output, and fail if it
+  is not found
+- line 38: The `upload` target depends on `build`, so we always build firmware
+  before testing
+- line 39: We flash firmware remotely. The `--fail` flag to `curl` utility
+  makes it fail if the response from the server is not successful (not HTTP 200
+  OK)
+
+This is the example output of the `make test` command described above:
+
+```sh
+$ make test
+curl --fail ...
+{"success":true,"written":59904}
+curl --fail ...
+3f3 2 main.c:65:main                    Ethernet: down
+7d7 1 mongoose.c:6760:onstatechange     Link up
+7e5 3 mongoose.c:6843:tx_dhcp_discover  DHCP discover sent
+7e8 2 main.c:65:main                    Ethernet: up
+81d 3 mongoose.c:6726:arp_cache_add     ARP cache: added 192.168.0.1 @ 90:5c:44:55:19:8b
+822 2 mongoose.c:6752:onstatechange     READY, IP: 192.168.0.24
+827 2 mongoose.c:6753:onstatechange            GW: 192.168.0.1
+82d 2 mongoose.c:6755:onstatechange            Lease: 86336 sec
+bc3 2 main.c:65:main                    Ethernet: up
+fab 2 main.c:65:main                    Ethernet: up
+```
+
+Done! Now, our automatic tests ensure that the firmware can be built, that is
+it bootable, that it initialises the network stack correctly.  This mechanism
+can be easily extended: just add more complex actions in your firmware binary,
+print the result to the UART, and check for the expected output in the test.
+
+Happy testing!
+
+
+## About the author
+
+I am Sergey Lyubka, an engineer and entrepreneur. I hold a MSc in Physics from
+Kyiv State University, Ukraine. I am a director and co-founder at Cesanta - a
+technology company based in Dublin, Ireland.  My passion is bare metal embedded
+network programming.  My company develops embedded solutions:
+- https://mongoose.ws - an open source HTTP/MQTT/Websocket network library
+- https://vcon.io - a remote firmware update / serial monitor framework
+
+I am open to give talks on embedded network programming - so [please
+contact](https://mongoose.ws/contact/) if you'd like me to talk for your
+company's development team, or at your university.
+
+Thank you!
