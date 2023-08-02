@@ -3,34 +3,51 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://opensource.org/licenses/MIT)
 [![Build Status]( https://github.com/cpq/bare-metal-programming-guide/workflows/build/badge.svg)](https://github.com/cpq/bare-metal-programming-guide/actions)
 
-English | [中文](README_zh-CN.md)
+English | [中文](README_zh-CN.md) | [Türkçe](README_tr-TR.md)
 
 This guide is written for developers who wish to start programming
 microcontrollers using a GCC compiler and a datasheet, without using any
-framework! This guide explains the fundamentals - and it helps to
-understand how embedded frameworks (Cube, Keil, Arduino, etc) work.
-
-The guide covers the following topics: memory and registers, interrupt vector
-table, startup code, linker script, build automation using `make`, GPIO
-peripheral and LED blinky, SysTick timer, UART peripheral and debug output,
-`printf` redirect to UART (IO retargeting), debugging with Segger Ozone, system
-clock setup, using CMSIS headers, web server implementation with device
-dashboard, and automatic tests.
+framework. This guide explains the fundamentals, and helps to understand how
+embedded frameworks like Cube, Keil, Arduino, and others, work.
 
 Every chapter in this guide comes with a complete source code which gradually
-progress in functionality and completeness.  The last (web server) chapter is
-the most complete, and can be used as a skeleton for the project of your own,
-dear reader.  Therefore, that last example project is provided for the other
-boards too. In this tutorial we'll use the Nucleo-F429ZI development board, so
-go ahead and download the "mcu datasheet" and the "board datasheet" for it.
+progress in functionality and completeness. In the end, I provide bare metal
+template projects for different architectures:
 
-| Board | MCU datasheet | Board datasheet | Status | Skeleton project |
-| ----- | ------------- | --------------- | ------ | ---------------- |
-| STM32 Nucleo-F429ZI | [mcu datasheet](https://www.st.com/resource/en/reference_manual/dm00031020-stm32f405-415-stm32f407-417-stm32f427-437-and-stm32f429-439-advanced-arm-based-32-bit-mcus-stmicroelectronics.pdf) | [board datasheet](https://www.st.com/resource/en/user_manual/dm00244518-stm32-nucleo144-boards-mb1137-stmicroelectronics.pdf) | complete |  [link](step-7-webserver/nucleo-f429zi/) |
-| TI EK-TM4C1294XL | [mcu datasheet](https://www.ti.com/lit/ds/symlink/tm4c1294ncpdt.pdf) | [board datasheet](https://www.ti.com/lit/ug/spmu365c/spmu365c.pdf) | complete | [link](step-7-webserver/ek-tm4c1294xl) | 
-| RP2040 Pico-W5500 | [mcu datasheet](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf) | [board datasheet](https://docs.wiznet.io/Product/iEthernet/W5500/w5500-evb-pico) | complete | [link](step-7-webserver/pico-w5500/) |
+- **blinky** - classic, blink an LED and print a debug message periodically
+- **cli** - UART command line interface. Implements commands to set LED status and hexdump RAM
+- **lfs** - implement file functions `mkdir(),readdir(),fopen(),...` using
+  [littlefs](https://github.com/littlefs-project/littlefs) in the upper
+  region of buit-in flash memory. Store device boot
+  count in a file, increment on each boot, and print periodically
+- **webui** - embedded web server with a professional device dashboard UI
+  using [mongoose library](https://github.com/cesanta/mongoose)
 
-Feel free to file an issue to support the board you work with.
+| Board | Arch | MCU datasheet | Board datasheet | Template project |
+| ----- | ---- | ------------- | --------------- | ---------------- |
+| STM32 Nucleo-F429ZI | Cortex-M4  | [mcu datasheet](https://www.st.com/resource/en/reference_manual/dm00031020-stm32f405-415-stm32f407-417-stm32f427-437-and-stm32f429-439-advanced-arm-based-32-bit-mcus-stmicroelectronics.pdf) | [board datasheet](https://www.st.com/resource/en/user_manual/dm00244518-stm32-nucleo144-boards-mb1137-stmicroelectronics.pdf) | [blinky](templates/blinky/nucleo-f429zi), [cli](templates/cli/nucleo-f429zi), [webui](steps/step-7-webserver/nucleo-f429zi/) |
+| STM32 Nucleo-F303K8 | Cortex-M4  | [mcu datasheet](https://www.st.com/resource/en/reference_manual/DM00043574-.pdf) | [board datasheet](https://www.st.com/resource/en/datasheet/stm32f303k8.pdf) | [lfs](templates/lfs/nucleo-f303k8) |
+| STM32 Nucleo-L432KC | Cortex-M4  | [mcu datasheet](https://www.st.com/resource/en/reference_manual/dm00151940-stm32l41xxx42xxx43xxx44xxx45xxx46xxx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf) | [board datasheet](https://www.st.com/resource/en/datasheet/stm32l432kc.pdf) | [blinky](templates/blinky/nucleo-l432kc), [cli](templates/cli/nucleo-l432kc), [lfs](templates/lfs/nucleo-l432kc) |
+| SAME54 Xplained     | Cortex-M4  | [mcu datasheet](https://ww1.microchip.com/downloads/aemDocuments/documents/MCU32/ProductDocuments/DataSheets/SAM-D5x-E5x-Family-Data-Sheet-DS60001507.pdf) | [board datasheet](https://ww1.microchip.com/downloads/en/DeviceDoc/70005321A.pdf) | [blinky](templates/blinky/same54-xplained) |
+| TI EK-TM4C1294XL    | Cortex-M4F | [mcu datasheet](https://www.ti.com/lit/ds/symlink/tm4c1294ncpdt.pdf) | [board datasheet](https://www.ti.com/lit/ug/spmu365c/spmu365c.pdf) | [webui](steps/step-7-webserver/ek-tm4c1294xl) | 
+| RP2040 Pico-W5500   | Cortex-M0+ | [mcu datasheet](https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf) | [board datasheet](https://docs.wiznet.io/Product/iEthernet/W5500/w5500-evb-pico) | [webui](steps/step-7-webserver/pico-w5500/) |
+| ESP32-C3            | RISCV      | [mcu datasheet](https://www.espressif.com/sites/default/files/documentation/esp32-c3_technical_reference_manual_en.pdf) | | [blinky](templates/blinky/esp32-c3) |
+
+In this tutorial we'll use the **Nucleo-F429ZI** development board, so
+go ahead and download the mcu datasheet and the board datasheet for it.
+
+
+## About me
+
+I am Sergey Lyubka, an engineer and entrepreneur. I hold a MSc in Physics from
+Kyiv State University, Ukraine. I am a director and co-founder at Cesanta - a
+technology company based in Dublin, Ireland. Cesanta develops embedded solutions:
+- https://mongoose.ws - an open source HTTP/MQTT/Websocket network library
+- https://vcon.io - a remote firmware update / serial monitor framework
+
+You are welcome
+to [register for my free webinar on embedded network programming](https://mongoose.ws/webinars/).
+
 
 ## Tools setup
 
@@ -76,7 +93,7 @@ enter the following commands to download this repository and build an example:
 
 ```sh
 git clone https://github.com/cpq/bare-metal-programming-guide
-cd bare-metal-programming-guide/step-0-minimal
+cd bare-metal-programming-guide/steps/step-0-minimal
 make
 ```
 
@@ -332,7 +349,7 @@ __attribute__((naked, noreturn)) void _reset(void) {
 extern void _estack(void);  // Defined in link.ld
 
 // 16 standard and 91 STM32-specific handlers
-__attribute__((section(".vectors"))) void (*tab[16 + 91])(void) = {
+__attribute__((section(".vectors"))) void (*const tab[16 + 91])(void) = {
   _estack, _reset
 };
 ```
@@ -341,10 +358,10 @@ For function `_reset()`, we have used GCC-specific attributes `naked` and
 `noreturn` - they mean, standard function's prologue and epilogue should not
 be created by the compiler, and that function does not return.
 
-The `void (*tab[16 + 91])(void)` expression means: define an array of 16 + 91
-pointers to functions, that return nothing (void) and take no arguments. Each
-such function is an IRQ handler (Interrupt ReQuest handler). An array of those
-handlers is called a vector table.
+The `void (*const tab[16 + 91])(void)` expression means: define an array of 16
++ 91 pointers to functions which return nothing (void) and take to arguments.
+Each such function is an IRQ handler (Interrupt ReQuest handler). An array of
+those handlers is called a vector table.
 
 The vector table `tab` we put in a separate section called `.vectors` - that we
 need later to tell the linker to put that section right at the beginning of the
@@ -402,7 +419,7 @@ address space, and which symbols to create.
 ### Linker script
 
 Create a file `link.ld`, and copy-paste contents from
-[step-0-minimal/link.ld](step-0-minimal/link.ld). Below is the explanation:
+[steps/step-0-minimal/link.ld](steps/step-0-minimal/link.ld). Below is the explanation:
 
 ```
 ENTRY(_reset);
@@ -677,7 +694,7 @@ clean:
 	rm -rf firmware.*
 ```
 
-A complete project source code you can find in [step-0-minimal](step-0-minimal) folder.
+A complete project source code you can find in [steps/step-0-minimal](steps/step-0-minimal) folder.
 
 ## Blinky LED
 
@@ -788,7 +805,7 @@ Finally, we're ready to modify our main loop to implement LED blinking:
 ```
 
 Run `make flash` and enjoy blue LED flashing.
-A complete project source code you can find in [step-1-blinky](step-1-blinky).
+A complete project source code you can find in [steps/step-1-blinky](steps/step-1-blinky).
 
 ## Blinky with SysTick interrupt
 
@@ -893,7 +910,7 @@ updated by interrupt handlers, or by the hardware, declare as `volatile`**.
 Now we should add `SysTick_Handler()` interrupt handler to the vector table:
 
 ```c
-__attribute__((section(".vectors"))) void (*tab[16 + 91])(void) = {
+__attribute__((section(".vectors"))) void (*const tab[16 + 91])(void) = {
     _estack, _reset, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, SysTick_Handler};
 ```
 
@@ -931,7 +948,7 @@ main loop (also called superloop) non-blocking. That means that inside that
 loop we can perform many actions - for example, have different timers with
 different periods, and they all will be triggered in time.
 
-A complete project source code you can find in [step-2-systick](step-2-systick) folder.
+A complete project source code you can find in [steps/step-2-systick](steps/step-2-systick) folder.
 
 ## Add UART debug output
 
@@ -1081,7 +1098,7 @@ hi
 hi
 ```
 
-A complete project source code you can find in [step-3-uart](step-3-uart) folder.
+A complete project source code you can find in [steps/step-3-uart](steps/step-3-uart) folder.
 
 ## Redirect printf() to UART
 
@@ -1117,17 +1134,17 @@ mechanism. We use newlib, so let's modify `_write()` syscall to print to the
 UART3.
 
 Before that, let's organise our source code in the following way:
-- move all API definitions to the file `mcu.h`
+- move all API definitions to the file `hal.h` (Harware Abstraction Layer)
 - move startup code to `startup.c`
 - create an empty file `syscalls.c` for newlib "syscalls"
 - modify Makefile to add `syscalls.c` and `startup.c` to the build
 
-After moving all API definitions to the `mcu.h`, our `main.c` file becomes
+After moving all API definitions to the `hal.h`, our `main.c` file becomes
 quite compact. Note that it does not have any mention of the low-level
 registers, just a high level API functions that are easy to understand:
 
 ```c
-#include "mcu.h"
+#include "hal.h"
 
 static volatile uint32_t s_ticks;
 void SysTick_Handler(void) {
@@ -1157,7 +1174,7 @@ Great, now let's retarget printf to the UART3. In the empty syscalls.c,
 copy/paste the following code:
 
 ```c
-#include "mcu.h"
+#include "hal.h"
 
 int _write(int fd, char *ptr, int len) {
   (void) fd, (void) ptr, (void) len;
@@ -1182,8 +1199,10 @@ fstatr.c:(.text._fstat_r+0xe): undefined reference to `_fstat'
 isattyr.c:(.text._isatty_r+0xc): undefined reference to `_isatty'
 ```
 
-Since we've used a newlib stdio function, we need to supply newlib with the rest
-of syscalls. Let's add just a simple stubs that do nothing:
+Since we've used a newlib stdio function, we need to supply newlib with the
+rest of syscalls. We add a simple stubs that do nothing, with exception  of
+`_sbrk()`. It needs to be implemented, since `printf()` calls `malloc()` which
+calls `_sbrk()`:
 
 ```c
 int _fstat(int fd, struct stat *st) {
@@ -1192,8 +1211,13 @@ int _fstat(int fd, struct stat *st) {
 }
 
 void *_sbrk(int incr) {
-  (void) incr;
-  return NULL;
+  extern char _end;
+  static unsigned char *heap = NULL;
+  unsigned char *prev_heap;
+  if (heap == NULL) heap = (unsigned char *) &_end;
+  prev_heap = heap;
+  heap += incr;
+  return prev_heap;
 }
 
 int _close(int fd) {
@@ -1236,7 +1260,7 @@ LED: 0, tick: 1000
 
 Congratulations! We learned how IO retargeting works, and
 can now printf-debug our firmware.
-A complete project source code you can find in [step-4-printf](step-4-printf) folder.
+A complete project source code you can find in [steps/step-4-printf](steps/step-4-printf) folder.
 
 ## Debug with Segger Ozone
 
@@ -1265,7 +1289,7 @@ Choose our firmware.elf file:
 <img src="images/ozone3.png" width="50%" />
 
 Leave the defaults on the next screen, click Finish, and we've got our
-debugger loaded (note the mcu.h source code is picked up):
+debugger loaded (note the hal.h source code is picked up):
 
 ![](images/ozone4.png)
 
@@ -1308,89 +1332,35 @@ CMSIS is an ARM standard, and since CMSIS headers are supplied by the MCU
 vendor, they are the source of authority. Therefore, using vendor
 headers is a preferred way, rather than writing definitions manually.
 
-In this section, we will replace our API functions in the `mcu.h` by the
-CMSIS vendor header, and leave the rest of the firmware intact.
+There are two sets of CMSIS headers:
+- First, there are ARM Core CMSIS headers. They describe ARM core,
+  and published by ARM on github: https://github.com/ARM-software/CMSIS_5
+- Second, there are MCU vendor CMSIS headers. They describe MCU peripherals,
+  and published by the MCU vendor. In our case, ST publishes them at
+  https://github.com/STMicroelectronics/cmsis_device_f4
 
-STM32 CMSIS headers for F4 family can be found at
-https://github.com/STMicroelectronics/cmsis_device_f4 repo. From there,
-copy the following files into our firmware directory,
-[step-5-cmsis](step-5-cmsis):
-- [stm32f429xx.h](https://raw.githubusercontent.com/STMicroelectronics/cmsis_device_f4/master/Include/stm32f429xx.h)
-- [system_stm32f4xx.h](https://raw.githubusercontent.com/STMicroelectronics/cmsis_device_f4/master/Include/system_stm32f4xx.h)
+We can pull those headers by a simple Makefile snippet:
+https://github.com/cpq/bare-metal-programming-guide/blob/785aa2ead0432fc67327781c82b9c41149fba158/step-5-cmsis/Makefile#L27-L31
 
-Those two files depend on a standard ARM CMSIS includes, download them too:
-- [core_cm4.h](https://raw.githubusercontent.com/STMicroelectronics/STM32CubeF4/master/Drivers/CMSIS/Core/Include/core_cm4.h)
-- [cmsis_gcc.h](https://raw.githubusercontent.com/STMicroelectronics/STM32CubeF4/master/Drivers/CMSIS/Core/Include/cmsis_gcc.h)
-- [cmsis_version.h](https://raw.githubusercontent.com/STMicroelectronics/STM32CubeF4/master/Drivers/CMSIS/Core/Include/cmsis_version.h)
-- [cmsis_compiler.h](https://raw.githubusercontent.com/STMicroelectronics/STM32CubeF4/master/Drivers/CMSIS/Core/Include/cmsis_compiler.h)
-- [mpu_armv7.h](https://raw.githubusercontent.com/STMicroelectronics/STM32CubeF4/master/Drivers/CMSIS/Core/Include/mpu_armv7.h)
+The ST CMSIS package also provides startup files for all their MCUs. We
+can use those instead of hand-writing the startup.c. The ST-provided startup
+file calls `SystemInit()` function, so we define it in the `main.c`.
 
-From the `mcu.h`, remove all peripheral API and definitions, and leave only
-standard C inludes, vendor CMSIS include, defines to PIN, BIT, FREQ, and
-`timer_expired()` helper function:
-
-```c
-#pragma once
-
-#include <inttypes.h>
-#include <stdbool.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <sys/stat.h>
-
-#include "stm32f429xx.h"
-
-#define FREQ 16000000  // CPU frequency, 16 Mhz
-#define BIT(x) (1UL << (x))
-#define PIN(bank, num) ((((bank) - 'A') << 8) | (num))
-#define PINNO(pin) (pin & 255)
-#define PINBANK(pin) (pin >> 8)
-
-static inline void spin(volatile uint32_t count) {
-  while (count--) (void) 0;
-}
-
-static inline bool timer_expired(uint32_t *t, uint32_t prd, uint32_t now) {
-  ...
-}
-```
+Now, let's replace our API functions in the `hal.h` using CMSIS definitions,
+and leave the rest of the firmware intact.  From the `hal.h`, remove all
+peripheral API and definitions, and leave only standard C inludes, vendor CMSIS
+include, defines to PIN, BIT, FREQ, and `timer_expired()` helper function.
 
 If we try to rebuild the firmware - `make clean build`, then GCC will fail
 complaining about missing `systick_init()`, `GPIO_MODE_OUTPUT`, `uart_init()`,
 and `UART3`. Let's add those using STM32 CMSIS files.
 
-Let's start from `systick_init()`. The `core_cm4.h` header defines
-`SysTick_Type` structure which is identical to our `struct systick`, and has
-an appropriate #define for `SysTick` peripheral. Also, `stm32f429xx.h` has
-a `RCC_TypeDef` structure and appropriate #define for the `RCC`. Therefore
-our `systick_init()` function remains almost unchanged: we only have to replace
-`SYSTICK` with `SysTick`:
-
-```c
-static inline void systick_init(uint32_t ticks) {
-  if ((ticks - 1) > 0xffffff) return;  // Systick timer is 24 bit
-  SysTick->LOAD = ticks - 1;
-  SysTick->VAL = 0;
-  SysTick->CTRL = BIT(0) | BIT(1) | BIT(2);  // Enable systick
-  RCC->APB2ENR |= BIT(14);                   // Enable SYSCFG
-}
-```
+Let's start from `systick_init()`. ARM core CMSIS headers provide a
+`SysTick_Config()` function that does the same - so we'll use it.
 
 Next goes `gpio_set_mode()` function. The  `stm32f429xx.h` header has
 `GPIO_TypeDef` structure, identical to our `struct gpio`. Let's use it:
-
-```c
-#define GPIO(bank) ((GPIO_TypeDef *) (GPIOA_BASE + 0x400 * (bank)))
-enum { GPIO_MODE_INPUT, GPIO_MODE_OUTPUT, GPIO_MODE_AF, GPIO_MODE_ANALOG };
-
-static inline void gpio_set_mode(uint16_t pin, uint8_t mode) {
-  GPIO_TypeDef *gpio = GPIO(PINBANK(pin));  // GPIO bank
-  int n = PINNO(pin);                      // Pin number
-  RCC->AHB1ENR |= BIT(PINBANK(pin));       // Enable GPIO clock
-  gpio->MODER &= ~(3U << (n * 2));         // Clear existing setting
-  gpio->MODER |= (mode & 3) << (n * 2);    // Set new mode
-}
-```
+https://github.com/cpq/bare-metal-programming-guide/blob/52e1a8acd30e60eba4c119e22b609571e39a86e0/step-5-cmsis/hal.h#L24-L28
 
 The `gpio_set_af()` and `gpio_write()` functions is also trivial -
 simply replace `struct gpio` with `GPIO_TypeDef`, and that's all.
@@ -1412,15 +1382,14 @@ shows the output. Congratulations, we have adopted our firmware code to
 use vendor CMSIS header files. Now let's reorganise the repository a bit
 by moving all standard files into `include` directory and updating Makefile
 to let GCC know about it:
+https://github.com/cpq/bare-metal-programming-guide/blob/785aa2ead0432fc67327781c82b9c41149fba158/step-5-cmsis/Makefile#L4
 
-```make
-...
-  -g3 -Os -ffunction-sections -fdata-sections -I. -Iinclude \
-```
+Also, let's include CMSIS header pulling as a dependency for the binary:
+https://github.com/cpq/bare-metal-programming-guide/blob/785aa2ead0432fc67327781c82b9c41149fba158/step-5-cmsis/Makefile#L18
 
-We have left with
-a project template that can be reused for the future projects.
-A complete project source code you can find in [step-5-cmsis](step-5-cmsis)
+We have left with a project template that can be reused for the future
+projects.  A complete project source code you can find in
+[steps/step-5-cmsis](steps/step-5-cmsis)
 
 
 ## Setting up clocks
@@ -1454,12 +1423,7 @@ and the APB2 clock: <= 90MHz. That narrows down the list of possible
 combinations. Here we chose the values manually. Note that tools like
 CubeMX can automate the process and make it easy and visual.
 
-```c
-enum { APB1_PRE = 5 /* AHB clock / 4 */, APB2_PRE = 4 /* AHB clock / 2 */ };
-enum { PLL_HSI = 16, PLL_M = 8, PLL_N = 180, PLL_P = 2 };  // Run at 180 Mhz
-#define PLL_FREQ (PLL_HSI * PLL_N / PLL_M / PLL_P)
-#define FREQ (PLL_FREQ * 1000000)
-```
+https://github.com/cpq/bare-metal-programming-guide/blob/9a3f9bc7b07d6a2a114581979e5b6715754c87c1/step-6-clock/hal.h#L20-L28
 
 Now we're ready for a simple algorithm to set up the clock for CPU and peripheral buses
 may look like this:
@@ -1468,25 +1432,21 @@ may look like this:
 - Set flash latency
 - Decide on a clock source, and PLL, APB1 and APB2 prescalers
 - Configure RCC by setting respective values:
+- Move clock inititialization into a separate file `sysinit.c`, function
+  `SystemInit()` which is automatically called by the startup code
 
-```c
-static inline void clock_init(void) {                 // Set clock frequency
-  SCB->CPACR |= ((3UL << 10 * 2) | (3UL << 11 * 2));  // Enable FPU
-  FLASH->ACR |= FLASH_LATENCY | BIT(8) | BIT(9);      // Flash latency, caches
-  RCC->PLLCFGR &= ~((BIT(17) - 1));                   // Clear PLL multipliers
-  RCC->PLLCFGR |= (((PLL_P - 2) / 2) & 3) << 16;      // Set PLL_P
-  RCC->PLLCFGR |= PLL_M | (PLL_N << 6);               // Set PLL_M and PLL_N
-  RCC->CR |= BIT(24);                                 // Enable PLL
-  while ((RCC->CR & BIT(25)) == 0) spin(1);           // Wait until done
-  RCC->CFGR = (APB1_PRE << 10) | (APB2_PRE << 13);    // Set prescalers
-  RCC->CFGR |= 2;                                     // Set clock source to PLL
-  while ((RCC->CFGR & 12) == 0) spin(1);              // Wait until done
-}
-```
+https://github.com/cpq/bare-metal-programming-guide/blob/9a3f9bc7b07d6a2a114581979e5b6715754c87c1/step-6-clock/sysinit.c#L10-L26
 
-What is left, is to call `clock_init()` from main, then rebuild and reflash.
-And our board runs at its maximum speed, 180MHz!
-A complete project source code you can find in [step-6-clock](step-6-clock)
+We need to also change `hal.h` - specifically, the UART intialization code.
+Different UART controllers are running on different buses: UART1 runs on a
+fast APB2, and the rest of UARTs run on a slower APB1. When running on a
+default 16Mhz clock, that did not make a difference. But when running on
+higher speeds, APB1 and APB2 may have different clocks, thus we need to
+adjust the baud rate calculation for the UART:
+https://github.com/cpq/bare-metal-programming-guide/blob/9a3f9bc7b07d6a2a114581979e5b6715754c87c1/step-6-clock/hal.h#L90-L107
+
+Rebuild and reflash, and our board runs at its maximum speed, 180MHz!
+A complete project source code you can find in [steps/step-6-clock](steps/step-6-clock)
 
 ## Web server with device dashboard
 
@@ -1583,7 +1543,7 @@ WEAK_ALIAS void NMI_Handler(void);
 WEAK_ALIAS void HardFault_Handler(void);
 WEAK_ALIAS void MemManage_Handler(void);
 ...
-__attribute__((section(".vectors"))) void (*tab[16 + 91])(void) = {
+__attribute__((section(".vectors"))) void (*const tab[16 + 91])(void) = {
     0, _reset, NMI_Handler, HardFault_Handler, MemManage_Handler,
     ...
 ```
@@ -1637,7 +1597,7 @@ for more details.
 ![Device dashboard](https://raw.githubusercontent.com/cesanta/mongoose/master/examples/device-dashboard/screenshots/dashboard.png)
 
 A complete project source code you can find in
-[step-7-webserver](step-7-webserver) directory.
+[steps/step-7-webserver](steps/step-7-webserver) directory.
 
 ## Automated firmware builds (software CI)
 
@@ -1807,19 +1767,3 @@ can be easily extended: just add more complex actions in your firmware binary,
 print the result to the UART, and check for the expected output in the test.
 
 Happy testing!
-
-
-## About the author
-
-I am Sergey Lyubka, an engineer and entrepreneur. I hold a MSc in Physics from
-Kyiv State University, Ukraine. I am a director and co-founder at Cesanta - a
-technology company based in Dublin, Ireland.  My passion is bare metal embedded
-network programming.  My company develops embedded solutions:
-- https://mongoose.ws - an open source HTTP/MQTT/Websocket network library
-- https://vcon.io - a remote firmware update / serial monitor framework
-
-I am open to give talks on embedded network programming - so [please
-contact](https://mongoose.ws/contact/) if you'd like me to talk for your
-company's development team, or at your university.
-
-Thank you!
